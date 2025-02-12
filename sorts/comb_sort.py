@@ -59,6 +59,7 @@ if __name__ == "__main__":
     doctest.testmod()
 
     # This is a test change for the AI code review
+    for this is shit
     user_input = input("Enter numbers separated by a comma:\n").strip()
     unsorted = [int(item) for item in user_input.split(",")]
     print(comb_sort(unsorted))
