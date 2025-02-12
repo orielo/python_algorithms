@@ -27,16 +27,29 @@ def post_comment(repo_name, pr_number, token, comment):
     requests.post(url, headers=headers, json=data)
 
 def main():
-    repo_name = os.getenv("GITHUB_REPOSITORY")
-    pr_number = os.getenv("GITHUB_EVENT_PULL_REQUEST_NUMBER")
+    repo_name = os.getenv("GITHUB_REPOSITORY")  # e.g., "orielo/python_algorithms"
     token = os.getenv("GITHUB_TOKEN")
-    
-    diff = get_pull_request_diff(repo_name, pr_number, token)
-    if diff:
-        review = review_code_with_gpt(diff)
-        post_comment(repo_name, pr_number, token, review)
+
+    # Fix: Get the PR number from the GitHub event payload
+    event_path = os.getenv("GITHUB_EVENT_PATH")
+    if event_path and os.path.isfile(event_path):
+        import json
+        with open(event_path, 'r') as f:
+            event_data = json.load(f)
+        pr_number = event_data.get("pull_request", {}).get("number")
     else:
-        print("Failed to fetch PR diff.")
+        pr_number = None
+
+    if repo_name and pr_number and token:
+        diff = get_pull_request_diff(repo_name, pr_number, token)
+        if diff:
+            review = review_code_with_gpt(diff)
+            post_comment(repo_name, pr_number, token, review)
+        else:
+            print("Failed to fetch PR diff.")
+    else:
+        print("Missing environment variables for repo, PR number, or token.")
+
 
 if __name__ == "__main__":
     main()
