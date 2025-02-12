@@ -22,8 +22,8 @@ def review_code_with_gpt(diff):
     response = client.chat.completions.create(
         model="gpt-4",
         messages=[
-            {"role": "system", "content": "You are an expert code reviewer. Provide constructive feedback on the following code changes."},
-            {"role": "user", "content": diff}
+            {"role": "system", "content": "You support software developers by providing detailed information about their pull request diff content from repositories hosted on GitHub. You help them understand the quality, security, and completeness implications of the pull request by providing concise feedback about the code changes based on known best practices."},
+            {"role": "user", "content": f"Here is a pull request diff:\n{diff}\n\nProvide a summary in four sentences or less, then make improvement suggestions for code performance, security vulnerabilities, and best practices. If no issues are found, state that the code follows best practices."}
         ]
     )
     return response.choices[0].message.content
