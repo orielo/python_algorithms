@@ -17,14 +17,16 @@ def get_pull_request_diff(repo_name, pr_number, token):
 def review_code_with_gpt(diff):
     openai.api_key = os.getenv("OPENAI_API_KEY")
     print("Sending code diff to OpenAI for review...")
-    response = openai.ChatCompletion.create(
+
+    client = openai.OpenAI()
+    response = client.chat.completions.create(
         model="gpt-4",
         messages=[
             {"role": "system", "content": "You are an expert code reviewer. Provide constructive feedback on the following code changes."},
             {"role": "user", "content": diff}
         ]
     )
-    return response["choices"][0]["message"]["content"]
+    return response.choices[0].message.content
 
 def post_comment(repo_name, pr_number, token, comment):
     print(f"Posting comment to PR #{pr_number} in repo {repo_name}")
