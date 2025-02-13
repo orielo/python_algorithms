@@ -87,6 +87,15 @@ def post_inline_comments(repo_name, pr_number, token, reviews):
                 print(f"📌 Comment post status for {file_name}, position {position}: {response.status_code}, Response: {response.text}")
             position += 1
 
+def post_general_summary(repo_name, pr_number, token, general_summary):
+    print(f"Posting general summary to PR #{pr_number}")
+    url = f"https://api.github.com/repos/{repo_name}/issues/{pr_number}/comments"
+    headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+    summary_text = general_summary.strip()
+    data = {"body": f"## 🔍 AI Code Review Summary\n{summary_text}"}
+    response = requests.post(url, headers=headers, json=data)
+    print(f"General summary post status: {response.status_code}")
+
 def main():
     repo_name = os.getenv("GITHUB_REPOSITORY")
     token = os.getenv("GITHUB_TOKEN")
