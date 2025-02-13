@@ -31,7 +31,7 @@ def review_code_with_gpt(file_diffs):
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "You are an expert code reviewer. Your feedback should be precise, relevant, and actionable. Provide in-line comments that directly reference the specific code line. Additionally, generate a structured high-level summary that highlights key improvements, potential issues, and best practices."},
-                {"role": "user", "content": f"Here is a code diff for file `{file_name}`:\n\n{patch}\n\nProvide short, impactful, and clear inline comments for each issue, ensuring they are directly tied to the correct lines. Also, generate a structured general summary with bullet points covering key improvements, potential problems, and best practices."}
+                {"role": "user", "content": f"Here is a code diff for file `{file_name}`:\n\n{patch}\n\nProvide short, impactful, and clear inline comments for each issue, ensuring they are directly tied to the correct lines. Do not generate empty or redundant comments. Also, generate a structured general summary with bullet points covering key improvements, potential problems, and best practices."}
             ]
         )
         review_text = response.choices[0].message.content.strip()
@@ -65,7 +65,7 @@ def post_inline_comments(repo_name, pr_number, token, reviews):
         for line, comment in zip(lines, inline_comments):
             if line.startswith('+') and comment.strip():
                 comment_data = {
-                    "body": f"### 💡 Suggested Improvement\n{comment}",
+                    "body": f"💡 *Suggested Improvement:* {comment}",
                     "commit_id": commit_id,
                     "path": file_name,
                     "position": position
