@@ -6,35 +6,62 @@ from github import Github
 
 def get_pull_request_diff(repo_name, pr_number, token):
     print(f"Fetching PR diff for repo: {repo_name}, PR number: {pr_number}")
-    url = f"https://api.github.com/repos/{repo_name}/pulls/{pr_number}"
-    headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3.diff"}
+    url = f"https://api.github.com/repos/{repo_name}/pulls/{pr_number}/files"
+    headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
     response = requests.get(url, headers=headers)
     print(f"GitHub API response status: {response.status_code}")
     if response.status_code != 200:
         print(f"Response content: {response.text}")
-    return response.text if response.status_code == 200 else None
+    return response.json() if response.status_code == 200 else None
 
-def review_code_with_gpt(diff):
+def review_code_with_gpt(file_diffs):
     openai.api_key = os.getenv("OPENAI_API_KEY")
     print("Sending code diff to OpenAI for review...")
 
-    client = openai.OpenAI()
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[
-            {"role": "system", "content": "You support software developers by providing detailed information about their pull request diff content from repositories hosted on GitHub. You help them understand the quality, security, and completeness implications of the pull request by providing concise feedback about the code changes based on known best practices."},
-            {"role": "user", "content": f"Here is a pull request diff:\n{diff}\n\nProvide a summary in four sentences or less, then make improvement suggestions for code performance, security vulnerabilities, and best practices. If no issues are found, state that the code follows best practices."}
-        ]
-    )
-    return response.choices[0].message.content
+    reviews = []
+    for file in file_diffs:
+        file_name = file.get("filename")
+        patch = file.get("patch", "")
+        if not patch:
+            continue
 
-def post_comment(repo_name, pr_number, token, comment):
-    print(f"Posting comment to PR #{pr_number} in repo {repo_name}")
-    url = f"https://api.github.com/repos/{repo_name}/issues/{pr_number}/comments"
+        client = openai.OpenAI()
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "You support software developers by providing detailed information about their pull request diff content from repositories hosted on GitHub. You help them understand the quality, security, and completeness implications of the pull request by providing concise feedback about the code changes based on known best practices."},
+                {"role": "user", "content": f"Here is a code diff for file `{file_name}`:\n\n{patch}\n\nProvide a concise review highlighting issues with code performance, security vulnerabilities, and best practices. Include specific line numbers and improvement suggestions."}
+            ]
+        )
+        review_text = response.choices[0].message.content
+        reviews.append((file_name, patch, review_text))
+    
+    return reviews
+
+def post_inline_comments(repo_name, pr_number, token, reviews):
+    print(f"Posting inline comments to PR #{pr_number} in repo {repo_name}")
+    url = f"https://api.github.com/repos/{repo_name}/pulls/{pr_number}/comments"
     headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
-    data = {"body": comment}
-    response = requests.post(url, headers=headers, json=data)
-    print(f"Comment post status: {response.status_code}")
+    
+    for file_name, patch, review_text in reviews:
+        lines = patch.split('\n')
+        line_number = None
+        for line in lines:
+            if line.startswith('@@'):
+                try:
+                    line_number = int(line.split('+')[1].split(',')[0])
+                except:
+                    continue
+            elif line.startswith('+') and line_number:
+                comment = {
+                    "body": f"**File: {file_name}**\n\n{review_text}",
+                    "commit_id": os.getenv("GITHUB_SHA"),
+                    "path": file_name,
+                    "position": line_number
+                }
+                response = requests.post(url, headers=headers, json=comment)
+                print(f"Comment post status for {file_name}, line {line_number}: {response.status_code}")
+                line_number += 1
 
 def main():
     repo_name = os.getenv("GITHUB_REPOSITORY")
@@ -54,11 +81,11 @@ def main():
         print("GITHUB_EVENT_PATH is missing or invalid.")
 
     if repo_name and pr_number and token:
-        diff = get_pull_request_diff(repo_name, pr_number, token)
-        if diff:
-            print("Successfully fetched PR diff.")
-            review = review_code_with_gpt(diff)
-            post_comment(repo_name, pr_number, token, review)
+        file_diffs = get_pull_request_diff(repo_name, pr_number, token)
+        if file_diffs:
+            print("Successfully fetched PR file diffs.")
+            reviews = review_code_with_gpt(file_diffs)
+            post_inline_comments(repo_name, pr_number, token, reviews)
         else:
             print("Failed to fetch PR diff.")
     else:
