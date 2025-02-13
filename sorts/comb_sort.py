@@ -60,7 +60,7 @@ if __name__ == "__main__":
 
     # This is a test change for the AI code review
     for this is some shit code:
-        # commenting on the print
+        # commenting on the print statement
         print("It's just a syntax error to prove a point")
     user_input = input("Enter numbers separated by a comma:\n").strip()
     unsorted = [int(item) for item in user_input.split(",")]
