@@ -30,8 +30,8 @@ def review_code_with_gpt(file_diffs):
         response = client.chat.completions.create(
             model="gpt-4-turbo",
             messages=[
-                {"role": "system", "content": "You are an expert code reviewer. Your task is to analyze the given code changes and provide precise, relevant, and actionable feedback. You will provide:\n\n1. **Inline comments**: Concise, high-impact suggestions that directly address issues or improvements within the code. These comments should be brief but meaningful.\n\n2. **General Summary**: A structured summary of overall improvements, best practices, and potential issues. Provide bullet points for readability.\n\nEnsure that all feedback is relevant, impactful, and avoids redundancy."},
-                {"role": "user", "content": f"Here is a code diff for file `{file_name}`:\n\n{patch}\n\nAnalyze the changes and provide:\n\n1. **Concise inline comments** that highlight specific improvements.\n2. **A general structured summary** of key improvements, best practices, and areas for enhancement.\n\nKeep responses short, impactful, and relevant."}
+                {"role": "system", "content": "You are an expert AI code reviewer. Your task is to analyze the given code changes and provide precise, relevant, and actionable feedback.\n\n1. **Inline comments**: Concise, high-impact suggestions that directly address issues or improvements within the code. Avoid redundancy by merging multiple comments for the same line into one.\n\n2. **General Summary**: A structured summary of overall improvements, best practices, and potential issues. Provide bullet points for readability.\n\nEnsure that all feedback is relevant, impactful, and avoids redundancy."},
+                {"role": "user", "content": f"Here is a code diff for file `{file_name}`:\n\n{patch}\n\nAnalyze the changes and provide:\n\n1. **Concise inline comments** that highlight specific improvements. Merge multiple comments for the same line into one.\n2. **A general structured summary** of key improvements, best practices, and areas for enhancement.\n\nKeep responses short, impactful, and relevant."}
             ]
         )
         review_text = response.choices[0].message.content.strip()
@@ -41,9 +41,19 @@ def review_code_with_gpt(file_diffs):
         else:
             inline_comments, summary = review_text, "No general summary provided."
         
-        general_summary.append(f"- **{file_name}**: {summary.strip()}" if summary.strip() else "- **{file_name}**: No general summary provided.")
-        unique_comments = [c.strip() for c in set(inline_comments.split("\n")) if c.strip()]
-        reviews.append((file_name, patch, unique_comments))
+        if not summary.strip():
+            summary = "No general summary provided. Please ensure feedback covers overall improvements and best practices."
+        
+        general_summary.append(f"- **{file_name}**: {summary.strip()}")
+        unique_comments = {}
+        for comment in inline_comments.split("\n"):
+            if comment.strip():
+                line_key = comment.split(":")[0] if ":" in comment else "unknown"
+                if line_key in unique_comments:
+                    unique_comments[line_key] += f"; {comment}"
+                else:
+                    unique_comments[line_key] = comment
+        reviews.append((file_name, patch, list(unique_comments.values())))
     
     return reviews, "\n".join(general_summary)
 
@@ -78,7 +88,7 @@ def post_general_summary(repo_name, pr_number, token, general_summary):
     print(f"Posting general summary to PR #{pr_number}")
     url = f"https://api.github.com/repos/{repo_name}/issues/{pr_number}/comments"
     headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
-    summary_text = general_summary.strip() if general_summary.strip() else "No general summary provided."
+    summary_text = general_summary.strip() if general_summary.strip() else "No general summary provided. Please ensure overall insights are included."
     data = {"body": f"## 🔍 AI Code Review Summary\n{summary_text}"}
     response = requests.post(url, headers=headers, json=data)
     print(f"General summary post status: {response.status_code}")
