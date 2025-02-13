@@ -28,10 +28,10 @@ def review_code_with_gpt(file_diffs):
 
         client = openai.OpenAI()
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4-turbo",
             messages=[
-                {"role": "system", "content": "You are an expert code reviewer. Your feedback should be precise, relevant, and actionable. Provide in-line comments that directly reference the specific code line. Additionally, generate a structured high-level summary that highlights key improvements, potential issues, and best practices."},
-                {"role": "user", "content": f"Here is a code diff for file `{file_name}`:\n\n{patch}\n\nProvide short, impactful, and clear inline comments for each issue, ensuring they are directly tied to the correct lines. Do not generate empty or redundant comments. Also, generate a structured general summary with bullet points covering key improvements, potential problems, and best practices."}
+                {"role": "system", "content": "You are an expert code reviewer. Your task is to analyze the given code changes and provide precise, relevant, and actionable feedback. You will provide:\n\n1. **Inline comments**: Concise, high-impact suggestions that directly address issues or improvements within the code. These comments should be brief but meaningful.\n\n2. **General Summary**: A structured summary of overall improvements, best practices, and potential issues. Provide bullet points for readability.\n\nEnsure that all feedback is relevant, impactful, and avoids redundancy."},
+                {"role": "user", "content": f"Here is a code diff for file `{file_name}`:\n\n{patch}\n\nAnalyze the changes and provide:\n\n1. **Concise inline comments** that highlight specific improvements.\n2. **A general structured summary** of key improvements, best practices, and areas for enhancement.\n\nKeep responses short, impactful, and relevant."}
             ]
         )
         review_text = response.choices[0].message.content.strip()
