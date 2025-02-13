@@ -19,7 +19,7 @@ def review_code_with_gpt(file_diffs):
     print("Sending code diff to OpenAI for review...")
 
     reviews = []
-    general_summary = ""
+    general_summary = []
     for file in file_diffs:
         file_name = file.get("filename")
         patch = file.get("patch", "")
@@ -31,20 +31,21 @@ def review_code_with_gpt(file_diffs):
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "You support software developers by providing detailed information about their pull request diff content from repositories hosted on GitHub. You help them understand the quality, security, and completeness implications of the pull request by providing concise feedback about the code changes based on known best practices."},
-                {"role": "user", "content": f"Here is a code diff for file `{file_name}`:\n\n{patch}\n\nProvide a concise review with short, impactful, and straight-to-the-point inline comments. Additionally, generate a high-level summary of the overall changes in a separate response."}
+                {"role": "user", "content": f"Here is a code diff for file `{file_name}`:\n\n{patch}\n\nProvide short, impactful, and clear inline comments for each issue. Also, generate a high-level summary of the key improvements and concerns raised in this PR."}
             ]
         )
         review_text = response.choices[0].message.content.strip()
+        
         if "Summary:" in review_text:
             inline_comments, summary = review_text.split("Summary:", 1)
         else:
             inline_comments, summary = review_text, "No general summary provided."
-        general_summary += f"\n- {file_name}: {summary.strip()}"
         
+        general_summary.append(f"- **{file_name}**: {summary.strip()}")
         unique_comments = list(set(inline_comments.split("\n")))  # Remove duplicate comments
         reviews.append((file_name, patch, unique_comments))
     
-    return reviews, general_summary
+    return reviews, "\n".join(general_summary)
 
 def post_inline_comments(repo_name, pr_number, token, reviews):
     print(f"Posting inline comments to PR #{pr_number} in repo {repo_name}")
@@ -60,27 +61,24 @@ def post_inline_comments(repo_name, pr_number, token, reviews):
     
     for file_name, patch, inline_comments in reviews:
         lines = patch.split('\n')
-        line_number = None
         position = 1
-
-        for comment in inline_comments:
-            if position >= len(lines):
-                break  # Avoid exceeding line range
-            comment_data = {
-                "body": comment,
-                "commit_id": commit_id,
-                "path": file_name,
-                "position": position
-            }
-            response = requests.post(url, headers=headers, json=comment_data)
-            print(f"📌 Comment post status for {file_name}, position {position}: {response.status_code}, Response: {response.text}")
+        for line, comment in zip(lines, inline_comments):
+            if line.startswith('+'):
+                comment_data = {
+                    "body": comment,
+                    "commit_id": commit_id,
+                    "path": file_name,
+                    "position": position
+                }
+                response = requests.post(url, headers=headers, json=comment_data)
+                print(f"📌 Comment post status for {file_name}, position {position}: {response.status_code}, Response: {response.text}")
             position += 1
 
 def post_general_summary(repo_name, pr_number, token, general_summary):
     print(f"Posting general summary to PR #{pr_number}")
     url = f"https://api.github.com/repos/{repo_name}/issues/{pr_number}/comments"
     headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
-    data = {"body": f"### AI Code Review Summary:{general_summary if general_summary.strip() else ' No general summary provided.'}"}
+    data = {"body": f"### AI Code Review Summary:\n{general_summary if general_summary.strip() else 'No general summary provided.'}"}
     response = requests.post(url, headers=headers, json=data)
     print(f"General summary post status: {response.status_code}")
 
