@@ -19,6 +19,7 @@ def review_code_with_gpt(file_diffs):
     print("Sending code diff to OpenAI for review...")
 
     reviews = []
+    general_summary = ""
     for file in file_diffs:
         file_name = file.get("filename")
         patch = file.get("patch", "")
@@ -30,20 +31,22 @@ def review_code_with_gpt(file_diffs):
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "You support software developers by providing detailed information about their pull request diff content from repositories hosted on GitHub. You help them understand the quality, security, and completeness implications of the pull request by providing concise feedback about the code changes based on known best practices."},
-                {"role": "user", "content": f"Here is a code diff for file `{file_name}`:\n\n{patch}\n\nProvide a concise review highlighting issues with code performance, security vulnerabilities, and best practices. Include specific line numbers and improvement suggestions."}
+                {"role": "user", "content": f"Here is a code diff for file `{file_name}`:\n\n{patch}\n\nProvide a concise review with short, impactful, and straight-to-the-point inline comments. Additionally, generate a high-level summary of the overall changes in a separate response."}
             ]
         )
         review_text = response.choices[0].message.content
-        reviews.append((file_name, patch, review_text))
+        split_reviews = review_text.split("Summary:")
+        inline_comments = split_reviews[0].strip()
+        general_summary += f"\n- {file_name}: {split_reviews[1].strip()}" if len(split_reviews) > 1 else ""
+        reviews.append((file_name, patch, inline_comments))
     
-    return reviews
+    return reviews, general_summary
 
 def post_inline_comments(repo_name, pr_number, token, reviews):
     print(f"Posting inline comments to PR #{pr_number} in repo {repo_name}")
     url = f"https://api.github.com/repos/{repo_name}/pulls/{pr_number}/comments"
     headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
 
-    # Fetch latest commit ID
     pr_info_url = f"https://api.github.com/repos/{repo_name}/pulls/{pr_number}"
     pr_info = requests.get(pr_info_url, headers=headers).json()
     commit_id = pr_info.get("head", {}).get("sha", "")
@@ -54,33 +57,38 @@ def post_inline_comments(repo_name, pr_number, token, reviews):
     for file_name, patch, review_text in reviews:
         lines = patch.split('\n')
         line_number = None
-        position = 1  # Relative to the diff hunk
+        position = 1
 
         for line in lines:
             if line.startswith('@@'):
                 try:
-                    # Extract hunk start position from @@ -a,b +c,d @@
                     line_number = int(line.split('+')[1].split(',')[0])
-                    position = 1  # Reset position for each hunk
+                    position = 1
                 except:
                     continue
             elif line.startswith('+') and line_number:
                 comment = {
-                    "body": f"**File: {file_name}**\n\n{review_text}",
+                    "body": f"{review_text}",
                     "commit_id": commit_id,
                     "path": file_name,
                     "position": position
                 }
                 response = requests.post(url, headers=headers, json=comment)
                 print(f"📌 Comment post status for {file_name}, position {position}: {response.status_code}, Response: {response.text}")
+                position += 1
 
-                position += 1  # Increment position within the hunk
+def post_general_summary(repo_name, pr_number, token, general_summary):
+    print(f"Posting general summary to PR #{pr_number}")
+    url = f"https://api.github.com/repos/{repo_name}/issues/{pr_number}/comments"
+    headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+    data = {"body": f"### AI Code Review Summary:\n{general_summary}"}
+    response = requests.post(url, headers=headers, json=data)
+    print(f"General summary post status: {response.status_code}")
 
 def main():
     repo_name = os.getenv("GITHUB_REPOSITORY")
     token = os.getenv("GITHUB_TOKEN")
 
-    # Fetch PR number from GitHub event payload
     event_path = os.getenv("GITHUB_EVENT_PATH")
     print(f"Event path: {event_path}")
     pr_number = None
@@ -97,8 +105,9 @@ def main():
         file_diffs = get_pull_request_diff(repo_name, pr_number, token)
         if file_diffs:
             print("Successfully fetched PR file diffs.")
-            reviews = review_code_with_gpt(file_diffs)
+            reviews, general_summary = review_code_with_gpt(file_diffs)
             post_inline_comments(repo_name, pr_number, token, reviews)
+            post_general_summary(repo_name, pr_number, token, general_summary)
         else:
             print("Failed to fetch PR diff.")
     else:
