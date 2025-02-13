@@ -30,8 +30,8 @@ def review_code_with_gpt(file_diffs):
         response = client.chat.completions.create(
             model="gpt-4-turbo",
             messages=[
-                {"role": "system", "content": "You are an expert AI code reviewer. Your task is to analyze the given code changes and provide precise, relevant, and actionable feedback.\n\n1. **Inline comments**: Concise, high-impact suggestions that directly address issues or improvements within the code.\n\n2. **General Summary**: A structured summary of overall improvements, best practices, and potential issues. Provide bullet points for readability.\n\nEnsure that all feedback is relevant, impactful, and avoids redundancy."},
-                {"role": "user", "content": f"Here is a code diff for file `{file_name}`:\n\n{patch}\n\nAnalyze the changes and provide:\n\n1. **Concise inline comments** that highlight specific improvements.\n2. **A general structured summary** of key improvements, best practices, and areas for enhancement.\n\nEnsure inline comments are always provided where applicable, and that multiple comments for the same line are merged."}
+                {"role": "system", "content": "You are an expert AI code reviewer. Your task is to analyze the given code changes and provide precise, relevant, and actionable feedback.\n\n1. **Inline comments**: Concise, high-impact suggestions that directly address issues or improvements within the code.\n\n2. **General Summary**: A structured summary focusing on the actual changes introduced in the pull request, their implications, and areas of improvement. Provide bullet points for readability.\n\nEnsure that all feedback is relevant, impactful, and avoids redundancy."},
+                {"role": "user", "content": f"Here is a code diff for file `{file_name}`:\n\n{patch}\n\nAnalyze the changes and provide:\n\n1. **Concise inline comments** that highlight specific improvements.\n2. **A general structured summary** that focuses specifically on the impact of the code changes, their intent, and how they could be further optimized.\n\nEnsure inline comments are always provided where applicable, and that multiple comments for the same line are merged."}
             ]
         )
         review_text = response.choices[0].message.content.strip()
@@ -43,7 +43,7 @@ def review_code_with_gpt(file_diffs):
         
         summary = summary.strip()
         if not summary or summary.lower() == "no general summary provided.":
-            summary = "### 🔹 General Review Summary\n- Code structure and readability improvements suggested.\n- Best practices for optimization and maintainability highlighted.\n- Potential issues related to logic, performance, or security identified."
+            summary = "### 🔹 General Review Summary\n- Summary of the code changes and their intended impact.\n- Key improvements made in this PR.\n- Areas that might require additional refinements."
         
         general_summary.append(f"- **{file_name}**: {summary}")
         unique_comments = {}
@@ -59,33 +59,6 @@ def review_code_with_gpt(file_diffs):
             reviews.append((file_name, patch, list(unique_comments.values())))
     
     return reviews, "\n".join(general_summary)
-
-def post_inline_comments(repo_name, pr_number, token, reviews):
-    print(f"Posting inline comments to PR #{pr_number} in repo {repo_name}")
-    url = f"https://api.github.com/repos/{repo_name}/pulls/{pr_number}/comments"
-    headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
-
-    pr_info_url = f"https://api.github.com/repos/{repo_name}/pulls/{pr_number}"
-    pr_info = requests.get(pr_info_url, headers=headers).json()
-    commit_id = pr_info.get("head", {}).get("sha", "")
-    if not commit_id:
-        print("❌ Failed to get commit SHA")
-        return
-    
-    for file_name, patch, inline_comments in reviews:
-        lines = patch.split('\n')
-        position = 1
-        for line, comment in zip(lines, inline_comments):
-            if line.startswith('+') and comment.strip():
-                comment_data = {
-                    "body": f"💡 *Suggested Improvement:* {comment}",
-                    "commit_id": commit_id,
-                    "path": file_name,
-                    "position": position
-                }
-                response = requests.post(url, headers=headers, json=comment_data)
-                print(f"📌 Comment post status for {file_name}, position {position}: {response.status_code}, Response: {response.text}")
-            position += 1
 
 def post_general_summary(repo_name, pr_number, token, general_summary):
     print(f"Posting general summary to PR #{pr_number}")
