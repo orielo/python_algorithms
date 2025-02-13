@@ -31,7 +31,7 @@ def review_code_with_gpt(file_diffs):
             model="gpt-4-turbo",
             messages=[
                 {"role": "system", "content": "You are an expert AI code reviewer. Your task is to analyze the given code changes and provide precise, relevant, and actionable feedback.\n\n1. **Inline comments**: Concise, high-impact suggestions that directly address issues or improvements within the code.\n\n2. **General Summary**: A structured summary focusing on the actual changes introduced in the pull request, their implications, and areas of improvement. Provide bullet points for readability.\n\nEnsure that all feedback is relevant, impactful, and avoids redundancy."},
-                {"role": "user", "content": f"Here is a code diff for file `{file_name}`:\n\n{patch}\n\nAnalyze the changes and provide:\n\n1. **Concise inline comments** that highlight specific improvements.\n2. **A general structured summary** that focuses specifically on the impact of the code changes, their intent, and how they could be further optimized.\n\nEnsure inline comments are always provided where applicable, and that multiple comments for the same line are merged."}
+                {"role": "user", "content": f"Here is a code diff for file `{file_name}`:\n\n{patch}\n\nAnalyze the changes and provide:\n\n1. **Concise inline comments** that highlight specific improvements.\n2. **A detailed and structured general summary** that captures the following:\n   - **Syntax Corrections**\n   - **Testing Strategy**\n   - **Code Quality & Professionalism**\n   - **Separation of Testing & Production Code**\n\nEnsure inline comments are always provided where applicable, and that multiple comments for the same line are merged."}
             ]
         )
         review_text = response.choices[0].message.content.strip()
@@ -43,9 +43,9 @@ def review_code_with_gpt(file_diffs):
         
         summary = summary.strip()
         if not summary or summary.lower() == "no general summary provided.":
-            summary = f"### 🔹 General Review Summary for {file_name}\n- **Key Changes Introduced:** \n- {patch[:300]}...\n- **Potential Improvements:** \n- Ensure best practices are followed for maintainability and performance."
+            summary = f"### 🔹 Key Improvements Needed for {file_name}\n\n1. **Syntax Correction**: Ensure proper syntax and valid iteration structures.\n2. **Testing Strategy**: Integrate robust test coverage using `pytest` or `unittest`.\n3. **Code Quality & Professionalism**: Follow best practices for maintainability.\n4. **Separation of Testing & Production Code**: Keep test code modular and separate from main logic.\n\nBy addressing these areas, the PR can significantly improve readability, maintainability, and professional quality."
         
-        general_summary.append(f"- **{file_name}**: {summary}")
+        general_summary.append(f"- **{file_name}**:\n{summary}")
         unique_comments = {}
         for comment in inline_comments.split("\n"):
             if comment.strip():
@@ -59,33 +59,6 @@ def review_code_with_gpt(file_diffs):
             reviews.append((file_name, patch, list(unique_comments.values())))
     
     return reviews, "\n".join(general_summary)
-
-def post_inline_comments(repo_name, pr_number, token, reviews):
-    print(f"Posting inline comments to PR #{pr_number} in repo {repo_name}")
-    url = f"https://api.github.com/repos/{repo_name}/pulls/{pr_number}/comments"
-    headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
-
-    pr_info_url = f"https://api.github.com/repos/{repo_name}/pulls/{pr_number}"
-    pr_info = requests.get(pr_info_url, headers=headers).json()
-    commit_id = pr_info.get("head", {}).get("sha", "")
-    if not commit_id:
-        print("❌ Failed to get commit SHA")
-        return
-    
-    for file_name, patch, inline_comments in reviews:
-        lines = patch.split('\n')
-        position = 1
-        for line, comment in zip(lines, inline_comments):
-            if line.startswith('+') and comment.strip():
-                comment_data = {
-                    "body": f"💡 *Suggested Improvement:* {comment}",
-                    "commit_id": commit_id,
-                    "path": file_name,
-                    "position": position
-                }
-                response = requests.post(url, headers=headers, json=comment_data)
-                print(f"📌 Comment post status for {file_name}, position {position}: {response.status_code}, Response: {response.text}")
-            position += 1
 
 def post_general_summary(repo_name, pr_number, token, general_summary):
     print(f"Posting general summary to PR #{pr_number}")
