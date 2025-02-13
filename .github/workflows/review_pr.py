@@ -34,11 +34,15 @@ def review_code_with_gpt(file_diffs):
                 {"role": "user", "content": f"Here is a code diff for file `{file_name}`:\n\n{patch}\n\nProvide a concise review with short, impactful, and straight-to-the-point inline comments. Additionally, generate a high-level summary of the overall changes in a separate response."}
             ]
         )
-        review_text = response.choices[0].message.content
-        split_reviews = review_text.split("Summary:")
-        inline_comments = split_reviews[0].strip()
-        general_summary += f"\n- {file_name}: {split_reviews[1].strip()}" if len(split_reviews) > 1 else ""
-        reviews.append((file_name, patch, inline_comments))
+        review_text = response.choices[0].message.content.strip()
+        if "Summary:" in review_text:
+            inline_comments, summary = review_text.split("Summary:", 1)
+        else:
+            inline_comments, summary = review_text, "No general summary provided."
+        general_summary += f"\n- {file_name}: {summary.strip()}"
+        
+        unique_comments = list(set(inline_comments.split("\n")))  # Remove duplicate comments
+        reviews.append((file_name, patch, unique_comments))
     
     return reviews, general_summary
 
@@ -54,34 +58,29 @@ def post_inline_comments(repo_name, pr_number, token, reviews):
         print("❌ Failed to get commit SHA")
         return
     
-    for file_name, patch, review_text in reviews:
+    for file_name, patch, inline_comments in reviews:
         lines = patch.split('\n')
         line_number = None
         position = 1
 
-        for line in lines:
-            if line.startswith('@@'):
-                try:
-                    line_number = int(line.split('+')[1].split(',')[0])
-                    position = 1
-                except:
-                    continue
-            elif line.startswith('+') and line_number:
-                comment = {
-                    "body": f"{review_text}",
-                    "commit_id": commit_id,
-                    "path": file_name,
-                    "position": position
-                }
-                response = requests.post(url, headers=headers, json=comment)
-                print(f"📌 Comment post status for {file_name}, position {position}: {response.status_code}, Response: {response.text}")
-                position += 1
+        for comment in inline_comments:
+            if position >= len(lines):
+                break  # Avoid exceeding line range
+            comment_data = {
+                "body": comment,
+                "commit_id": commit_id,
+                "path": file_name,
+                "position": position
+            }
+            response = requests.post(url, headers=headers, json=comment_data)
+            print(f"📌 Comment post status for {file_name}, position {position}: {response.status_code}, Response: {response.text}")
+            position += 1
 
 def post_general_summary(repo_name, pr_number, token, general_summary):
     print(f"Posting general summary to PR #{pr_number}")
     url = f"https://api.github.com/repos/{repo_name}/issues/{pr_number}/comments"
     headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
-    data = {"body": f"### AI Code Review Summary:\n{general_summary}"}
+    data = {"body": f"### AI Code Review Summary:{general_summary if general_summary.strip() else ' No general summary provided.'}"}
     response = requests.post(url, headers=headers, json=data)
     print(f"General summary post status: {response.status_code}")
 
