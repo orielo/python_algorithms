@@ -30,8 +30,8 @@ def review_code_with_gpt(file_diffs):
         response = client.chat.completions.create(
             model="gpt-4",
             messages=[
-                {"role": "system", "content": "You support software developers by providing detailed information about their pull request diff content from repositories hosted on GitHub. You help them understand the quality, security, and completeness implications of the pull request by providing concise feedback about the code changes based on known best practices."},
-                {"role": "user", "content": f"Here is a code diff for file `{file_name}`:\n\n{patch}\n\nProvide short, impactful, and clear inline comments for each issue. Also, generate a high-level summary of the key improvements and concerns raised in this PR."}
+                {"role": "system", "content": "You support software developers by providing detailed and precise code review feedback. Your comments should be clear, constructive, and directly applicable."},
+                {"role": "user", "content": f"Here is a code diff for file `{file_name}`:\n\n{patch}\n\nProvide concise and impactful inline comments for each issue. Ensure comments are informative and directly tied to the relevant lines. Also, generate a well-structured high-level summary of the key improvements and concerns raised in this PR."}
             ]
         )
         review_text = response.choices[0].message.content.strip()
@@ -41,8 +41,8 @@ def review_code_with_gpt(file_diffs):
         else:
             inline_comments, summary = review_text, "No general summary provided."
         
-        general_summary.append(f"- **{file_name}**: {summary.strip()}")
-        unique_comments = list(set(inline_comments.split("\n")))  # Remove duplicate comments
+        general_summary.append(f"- **{file_name}**: {summary.strip()}" if summary.strip() else "- **{file_name}**: No general summary provided.")
+        unique_comments = [c.strip() for c in set(inline_comments.split("\n")) if c.strip()]
         reviews.append((file_name, patch, unique_comments))
     
     return reviews, "\n".join(general_summary)
@@ -63,9 +63,9 @@ def post_inline_comments(repo_name, pr_number, token, reviews):
         lines = patch.split('\n')
         position = 1
         for line, comment in zip(lines, inline_comments):
-            if line.startswith('+'):
+            if line.startswith('+') and comment:
                 comment_data = {
-                    "body": comment,
+                    "body": f"### :bulb: Suggested Improvement\n{comment}",
                     "commit_id": commit_id,
                     "path": file_name,
                     "position": position
@@ -78,7 +78,8 @@ def post_general_summary(repo_name, pr_number, token, general_summary):
     print(f"Posting general summary to PR #{pr_number}")
     url = f"https://api.github.com/repos/{repo_name}/issues/{pr_number}/comments"
     headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
-    data = {"body": f"### AI Code Review Summary:\n{general_summary if general_summary.strip() else 'No general summary provided.'}"}
+    summary_text = general_summary.strip() if general_summary.strip() else "No general summary provided."
+    data = {"body": f"## 🔍 AI Code Review Summary\n{summary_text}"}
     response = requests.post(url, headers=headers, json=data)
     print(f"General summary post status: {response.status_code}")
 
