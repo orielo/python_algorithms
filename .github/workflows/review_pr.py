@@ -42,26 +42,39 @@ def post_inline_comments(repo_name, pr_number, token, reviews):
     print(f"Posting inline comments to PR #{pr_number} in repo {repo_name}")
     url = f"https://api.github.com/repos/{repo_name}/pulls/{pr_number}/comments"
     headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+
+    # Fetch latest commit ID
+    pr_info_url = f"https://api.github.com/repos/{repo_name}/pulls/{pr_number}"
+    pr_info = requests.get(pr_info_url, headers=headers).json()
+    commit_id = pr_info.get("head", {}).get("sha", "")
+    if not commit_id:
+        print("❌ Failed to get commit SHA")
+        return
     
     for file_name, patch, review_text in reviews:
         lines = patch.split('\n')
         line_number = None
+        position = 1  # Relative to the diff hunk
+
         for line in lines:
             if line.startswith('@@'):
                 try:
+                    # Extract hunk start position from @@ -a,b +c,d @@
                     line_number = int(line.split('+')[1].split(',')[0])
+                    position = 1  # Reset position for each hunk
                 except:
                     continue
             elif line.startswith('+') and line_number:
                 comment = {
                     "body": f"**File: {file_name}**\n\n{review_text}",
-                    "commit_id": os.getenv("GITHUB_SHA"),
+                    "commit_id": commit_id,
                     "path": file_name,
-                    "position": line_number
+                    "position": position
                 }
                 response = requests.post(url, headers=headers, json=comment)
-                print(f"Comment post status for {file_name}, line {line_number}: {response.status_code}")
-                line_number += 1
+                print(f"📌 Comment post status for {file_name}, position {position}: {response.status_code}, Response: {response.text}")
+
+                position += 1  # Increment position within the hunk
 
 def main():
     repo_name = os.getenv("GITHUB_REPOSITORY")
