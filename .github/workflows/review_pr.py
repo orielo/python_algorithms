@@ -79,7 +79,7 @@ def post_general_summary(repo_name, pr_number, token, general_summary):
     url = f"https://api.github.com/repos/{repo_name}/issues/{pr_number}/comments"
     headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
     summary_text = general_summary.strip() if general_summary.strip() else "No general summary provided."
-    data = {"body": f"## 🔍 AI Code Review Summary\n{summary_text}"}
+    data = {"body": f"## 🔍 AI Code Review Summary\n\n{summary_text}"}
     response = requests.post(url, headers=headers, json=data)
     print(f"General summary post status: {response.status_code}")
 
